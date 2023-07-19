@@ -47,6 +47,7 @@ _AGGREGATED_PREFIX = 'AGGREGATED://'
 _PLACEHOLDER_PREFIX = 'PLACEHOLDER://'
 _COMMIT_SUCCESS_FILE = 'commit_success.txt'
 _GCS_PATH_PREFIX = 'gs://'
+_CHFS_PATH_PREFIX = 'chfs://'
 _LOCK_ITEM_NAME = 'LOCKED'
 _LAST_CHECKPOINT_WRITE_TIME = time.time()
 CheckpointDirs = Tuple[str, str]
@@ -445,10 +446,13 @@ def cleanup_tmp_directories(directory: epath.PathLike,
 def is_gcs_path(path: epath.Path):
   return os.fspath(path).startswith(_GCS_PATH_PREFIX)
 
+def is_chfs_path(path: epath.Path):
+  return os.fspath(path).startswith(_CHFS_PATH_PREFIX)
+
 
 def get_tmp_directory(path: epath.Path) -> epath.Path:
   """Returns a tmp directory for the given path. Does not create it."""
-  if is_gcs_path(path):
+  if is_gcs_path(path) or is_chfs_path(path):
     return path
   now = time.time()
   sec = int(now)
@@ -510,13 +514,13 @@ def create_tmp_directory(final_dir: epath.PathLike,
   final_dir = epath.Path(final_dir)
   # Renames are not atomic in GCS. Save directly to final_dir and rely on commit
   # completion file to indicate success.
-  if is_gcs_path(final_dir):
+  if is_gcs_path(final_dir) or is_chfs_path(final_dir):
     tmp_dir = final_dir
   else:
     tmp_dir = get_tmp_directory(final_dir)
 
   if tmp_dir.exists():
-    if is_gcs_path(tmp_dir):
+    if is_gcs_path(tmp_dir) or is_chfs_path(tmp_dir):
       raise FileExistsError(
           f'Attempted to create temporary directory {tmp_dir} which already'
           ' exists.'
@@ -701,7 +705,7 @@ def is_checkpoint_finalized(path: epath.PathLike) -> bool:
     raise ValueError(f'Path {path} does not exist.')
   if not path.is_dir():
     raise ValueError(f'Path {path} is not a directory. Not a valid checkpoint')
-  if is_gcs_path(path) and not (path / _COMMIT_SUCCESS_FILE).exists():
+  if (is_gcs_path(path) or is_chfs_path(path)) and not (path / _COMMIT_SUCCESS_FILE).exists():
     return False
   if TMP_DIR_SUFFIX in path.name:
     return False
@@ -715,7 +719,7 @@ def is_tmp_checkpoint(path: epath.PathLike) -> bool:
     raise ValueError(f'Path {path} does not exist.')
   if not path.is_dir():
     return False
-  if is_gcs_path(path) and not (path / _COMMIT_SUCCESS_FILE).exists():
+  if (is_gcs_path(path) or is_chfs_path(path)) and not (path / _COMMIT_SUCCESS_FILE).exists():
     return True
   if TMP_DIR_SUFFIX in path.name:
     return True
